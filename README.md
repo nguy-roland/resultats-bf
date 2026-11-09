@@ -4,8 +4,8 @@ Plateforme de consultation des résultats d'examens par matricule, entièrement 
 
 ## Prérequis
 
-- VirtualBox (version à préciser)
-- Vagrant (version à préciser)
+- Testé avec VirtualBox 7.1.18 et Vagrant 2.4.9
+- La boîte bento/ubuntu-24.04 (version 202510.26.0) est téléchargée automatiquement au premier `vagrant up`
 - 8 Go de RAM minimum
 
 ## Démarrage
