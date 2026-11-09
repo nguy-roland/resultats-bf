@@ -1,0 +1,14 @@
+# Machines Vagrant
+.vagrant/
+*.log
+
+# Secrets : seul .env.exemple est versionné
+.env
+
+# Engendré par le Vagrantfile à chaque exécution
+config/noeuds.yml
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
