@@ -5,7 +5,7 @@
 ```bash
 git clone git@github.com:nguy-roland/resultats-bf.git
 cd resultats-bf
-git config user.name "Prénom NOM"   # ton vrai nom : l'historique est évalué
+git config user.name "NOM Prénom"   # ton vrai nom : l'historique est évalué
 ```
 
 ## Règles
