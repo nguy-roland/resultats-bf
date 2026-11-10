@@ -63,7 +63,10 @@ Vagrant.configure("2") do |config|
 
       # Socle commun à toutes les machines, puis script propre au rôle.
       machine.vm.provision "shell", path: "scripts/commun.sh", env: SECRETS
-      machine.vm.provision "shell", path: "scripts/#{noeud['role']}.sh", env: SECRETS
+      
+      # Le répartiteur se reconfigure à chaque vagrant up, pour suivre NB_APP (R3).
+      machine.vm.provision "shell", path: "scripts/#{noeud['role']}.sh", env: SECRETS,
+        run: noeud["role"] == "lb" ? "always" : "once"
     end
   end
 end
