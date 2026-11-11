@@ -3,16 +3,22 @@ require 'fileutils'
 require 'securerandom'
 
 GROUPE        = 3
-NB_APP        = (ENV['NB_APP'] || 2).to_i
 RESEAU        = "192.168.#{55 + GROUPE}"
 BOITE         = "bento/ubuntu-24.04"
 VERSION_BOITE = "202510.26.0"
 RACINE        = File.dirname(__FILE__)
 
+# NB_APP : la valeur passée en variable d'environnement, sinon la dernière utilisée, sinon 2.
+# Elle est mémorisée pour que ssh, provision et destroy voient les mêmes machines que le dernier up.
+FICHIER_NB_APP = File.join(RACINE, ".vagrant", "nb_app")
+NB_APP = (ENV['NB_APP'] || (File.read(FICHIER_NB_APP) if File.exist?(FICHIER_NB_APP)) || 2).to_i
+
 # Au-delà de 9, app10 prendrait .30 et app11 l'adresse de bdd1 (.31).
 unless (2..9).include?(NB_APP)
   abort "NB_APP doit être compris entre 2 et 9 (reçu : #{NB_APP})."
 end
+FileUtils.mkdir_p(File.dirname(FICHIER_NB_APP))
+File.write(FICHIER_NB_APP, NB_APP.to_s)
 
 # Source unique de vérité : les VM et la configuration du répartiteur
 # sont engendrées à partir de cette table.
@@ -63,7 +69,10 @@ Vagrant.configure("2") do |config|
 
       # Socle commun à toutes les machines, puis script propre au rôle.
       machine.vm.provision "shell", path: "scripts/commun.sh", env: SECRETS
-      machine.vm.provision "shell", path: "scripts/#{noeud['role']}.sh", env: SECRETS
+      
+      # Le répartiteur se reconfigure à chaque vagrant up, pour suivre NB_APP (R3).
+      machine.vm.provision "shell", path: "scripts/#{noeud['role']}.sh", env: SECRETS,
+        run: noeud["role"] == "lb" ? "always" : "once"
     end
   end
 end
