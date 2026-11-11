@@ -44,9 +44,9 @@ Le nombre de serveurs applicatifs se règle avec `NB_APP` (2 par défaut) : `NB_
 
 ## Équipe
 
-| Membre                      | Rôle                              |
-|-----------------------------|-----------------------------------|
-| ZONGO Naboswende Guy-Roland | Architecte réseau et répartition  |
-| …                           | Ingénieur applicatif              |
-| …                           | Ingénieur données                 |
-| …                           | Ingénieur essais et observabilité |
+| Membre                           | Rôle                              |
+|----------------------------------|-----------------------------------|
+| ZONGO Naboswende Guy-Roland      | Architecte réseau et répartition  |
+| ZANGO Issaka Wendingoudi         | Ingénieur applicatif              |
+| TAPSOBA Sandrine Pelagie         | Ingénieur données                 |
+| KABORE Wendpouré Julie Stéphanie | Ingénieur essais et observabilité |
