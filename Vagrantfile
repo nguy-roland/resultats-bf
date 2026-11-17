@@ -20,6 +20,18 @@ end
 FileUtils.mkdir_p(File.dirname(FICHIER_NB_APP))
 File.write(FICHIER_NB_APP, NB_APP.to_s)
 
+
+# EXTENSIONS : liste séparée par des virgules (e1), mémorisée comme NB_APP.
+# Par défaut, toutes les extensions réalisées ; EXTENSIONS= vagrant up démarre le socle seul.
+FICHIER_EXTENSIONS = File.join(RACINE, ".vagrant", "extensions")
+EXTENSIONS = (ENV['EXTENSIONS'] || (File.read(FICHIER_EXTENSIONS) if File.exist?(FICHIER_EXTENSIONS)) || "e1")
+  .split(",").map(&:strip).reject(&:empty?)
+EXTENSIONS_INCONNUES = EXTENSIONS - ["e1"]
+unless EXTENSIONS_INCONNUES.empty?
+  abort "Extension inconnue : #{EXTENSIONS_INCONNUES.join(', ')} (connues : e1)."
+end
+File.write(FICHIER_EXTENSIONS, EXTENSIONS.join(","))
+
 # Source unique de vérité : les VM et la configuration du répartiteur
 # sont engendrées à partir de cette table.
 NOEUDS = []
@@ -29,6 +41,15 @@ NOEUDS << { "nom" => "bdd2", "ip" => "#{RESEAU}.32", "memoire" => 768, "role" =>
 NOEUDS << { "nom" => "app#{numero}", "ip" => "#{RESEAU}.#{20 + numero}", "memoire" => 512, "role" => "app", "port" => 8000 }
 end
 NOEUDS << { "nom" => "lb1", "ip" => "#{RESEAU}.11", "memoire" => 512, "role" => "lb" }
+
+
+# E1 : lb2 en secours, et une adresse virtuelle partagée par VRRP (keepalived).
+if EXTENSIONS.include?("e1")
+  ADRESSE_VIRTUELLE = "#{RESEAU}.10"
+  NOEUDS.last.merge!("vip" => ADRESSE_VIRTUELLE, "priorite" => 150)
+  NOEUDS << { "nom" => "lb2", "ip" => "#{RESEAU}.12", "memoire" => 512, "role" => "lb",
+              "vip" => ADRESSE_VIRTUELLE, "priorite" => 100 }
+end
 
 # Les scripts de provisionnement liront ce fichier dans /vagrant/config/noeuds.yml
 FileUtils.mkdir_p(File.join(RACINE, "config"))
@@ -58,7 +79,8 @@ Vagrant.configure("2") do |config|
     config.vm.define noeud["nom"] do |machine|
       machine.vm.hostname = noeud["nom"]
       machine.vm.network "private_network", ip: noeud["ip"]
-      if noeud["role"] == "lb"
+      # Seul lb1 expose un port vers l'hôte (R8) ; avec E1, on passe par l'adresse virtuelle.
+      if noeud["nom"] == "lb1"
         machine.vm.network "forwarded_port", guest: 80, host: 8080
       end
       machine.vm.provider "virtualbox" do |virtualbox|

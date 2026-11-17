@@ -18,6 +18,8 @@ vagrant up
 
 Le service répond ensuite sur http://localhost:8080.
 
+Avec l'extension E1, active par défaut, il répond aussi sur http://192.168.58.10. C'est l'adresse virtuelle partagée par lb1 et lb2, qui reste joignable si lb1 tombe. `EXTENSIONS= vagrant up` démarre le socle seul.
+
 ## Architecture
 
 Réseau privé : 192.168.58.0/24.
@@ -28,6 +30,7 @@ Réseau privé : 192.168.58.0/24.
 | bdd2        | Réplique en flux               | 192.168.58.32   |
 | app1 … appN | Serveurs applicatifs sans état | 192.168.58.21 … |
 | lb1         | Répartiteur de charge          | 192.168.58.11   |
+| lb2         | Répartiteur de secours (E1)    | 192.168.58.12   |
 
 Le nombre de serveurs applicatifs se règle avec `NB_APP` (2 par défaut) : `NB_APP=4 vagrant up`.
 
