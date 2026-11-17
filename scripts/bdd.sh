@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# scripts/bdd.sh : prépare PostgreSQL sur bdd1 (base primaire).
-# Rejouable : vagrant provision bdd1 deux fois de suite ne change rien la 2e fois.
-#
-# Variables attendues (transmises par le Vagrantfile, jamais écrites ici) :
-#   DB_NAME, DB_USER, DB_PASSWORD, REPLICATION_USER, REPLICATION_PASSWORD
+# Rôle         : base de données primaire (bdd1)
+# Responsable  : ingénieur données
+# Reçoit       : DB_NAME, DB_USER, DB_PASSWORD, REPLICATION_USER, REPLICATION_PASSWORD
+# Produit      : PostgreSQL à l'écoute sur 0.0.0.0:5432, table resultats
+#                (matricule, nom, serie, moyenne, admis) de 50 000 lignes,
+#                réplication autorisée depuis bdd2
+# Vérification : depuis app1, SELECT count(*) FROM resultats renvoie 50000 ;
+#                rejouer ne change rien
 
 set -euo pipefail
 
@@ -13,26 +16,26 @@ set -euo pipefail
 : "${REPLICATION_USER:?REPLICATION_USER manquant}"
 : "${REPLICATION_PASSWORD:?REPLICATION_PASSWORD manquant}"
 
-RESEAU_PRIVE="192.168.58.0/24"
-IP_BDD2="192.168.58.32/32"
-
 export DEBIAN_FRONTEND=noninteractive
 
 log() { echo "[bdd.sh] $*"; }
 
 # 1. Installation de PostgreSQL, seulement s'il n'est pas déjà là
-if dpkg -s postgresql >/dev/null 2>&1; then
+if dpkg -s postgresql python3-yaml >/dev/null 2>&1; then
   log "PostgreSQL déjà installé"
 else
   log "Installation de PostgreSQL"
   apt-get update -qq
-  apt-get install -y -qq postgresql
+  apt-get install -y -qq postgresql python3-yaml
 fi
 
 PG_VERSION="$(ls /usr/lib/postgresql | sort -V | tail -n 1)"
 PG_CONF_DIR="/etc/postgresql/${PG_VERSION}/main"
 CONF_D="${PG_CONF_DIR}/conf.d"
 HBA="${PG_CONF_DIR}/pg_hba.conf"
+FICHIER_NOEUDS=/vagrant/config/noeuds.yml
+IP_BDD2="$(python3 -c "import sys, yaml; print(next(n['ip'] for n in yaml.safe_load(open(sys.argv[1])) if n['role'] == 'replique'))" "$FICHIER_NOEUDS")/32"
+RESEAU_PRIVE="${IP_BDD2%.*}.0/24"
 
 systemctl enable --now postgresql >/dev/null 2>&1
 
@@ -98,15 +101,13 @@ sudo --preserve-env=DB_NAME,DB_USER,DB_PASSWORD,REPLICATION_USER,REPLICATION_PAS
 \getenv repl_user REPLICATION_USER
 \getenv repl_pass REPLICATION_PASSWORD
 
--- Utilisateur applicatif : créé s'il manque, mot de passe resynchronisé ensuite
-SELECT format('CREATE ROLE %I LOGIN', :'db_user')
+-- Utilisateur applicatif : créé avec son mot de passe, seulement s'il n'existe pas
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user') \gexec
-ALTER ROLE :"db_user" PASSWORD :'db_pass';
 
--- Rôle de réplication
-SELECT format('CREATE ROLE %I REPLICATION LOGIN', :'repl_user')
+-- Rôle de réplication : créé avec son mot de passe, seulement s'il n'existe pas
+SELECT format('CREATE ROLE %I REPLICATION LOGIN PASSWORD %L', :'repl_user', :'repl_pass')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'repl_user') \gexec
-ALTER ROLE :"repl_user" PASSWORD :'repl_pass';
 
 -- Base de données
 SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_user')
