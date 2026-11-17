@@ -4,6 +4,7 @@
 # Reçoit       : nœuds de rôle app (ip, port) dans /vagrant/config/noeuds.yml
 # Produit      : HAProxy à l'écoute sur 0.0.0.0:80, configuration engendrée depuis
 #                noeuds.yml, sonde GET /sante, serveur défaillant écarté en moins de 5 s
+#                avec E1 : keepalived partage l'adresse virtuelle avec l'autre répartiteur
 # Vérification : 20 appels à http://localhost:8080/info depuis l'hôte
 #                montrent tous les appN ; rejouer ne change rien
 set -euo pipefail
@@ -86,3 +87,90 @@ fi
 
 systemctl enable --quiet haproxy
 systemctl is-active --quiet haproxy || systemctl start haproxy
+
+
+
+# Extension E1 : keepalived partage l'adresse virtuelle entre lb1 et lb2 (VRRP).
+# Tout est lu dans la ligne de cette machine dans la table des nœuds.
+eval "$(python3 - "$FICHIER_NOEUDS" "$(hostname)" << 'PYTHON'
+import sys, yaml
+with open(sys.argv[1]) as fichier:
+    noeuds = yaml.safe_load(fichier)
+moi = next(noeud for noeud in noeuds if noeud["nom"] == sys.argv[2])
+repartiteurs = [noeud for noeud in noeuds if noeud["role"] == "lb"]
+priorite_max = max(noeud.get("priorite", 0) for noeud in repartiteurs)
+print(f"MON_IP={moi['ip']}")
+print(f"ADRESSE_VIRTUELLE={moi.get('vip', '')}")
+print(f"PRIORITE={moi.get('priorite', '')}")
+print(f"ETAT={'MASTER' if moi.get('priorite') == priorite_max else 'BACKUP'}")
+print(f"PAIRS='{' '.join(noeud['ip'] for noeud in repartiteurs if noeud['nom'] != moi['nom'])}'")
+PYTHON
+)"
+
+if [ -z "$ADRESSE_VIRTUELLE" ]; then
+  # E1 désactivée : keepalived arrêté s'il avait été installé.
+  if command -v keepalived > /dev/null; then
+    systemctl disable --quiet --now keepalived
+  fi
+  echo "[lb] E1 désactivée"
+  exit 0
+fi
+
+if ! command -v keepalived > /dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get install -y -qq keepalived
+fi
+
+# Interface du réseau privé : celle qui porte l'adresse de cette machine.
+INTERFACE=$(ip -o -4 addr show | awk -v ip="$MON_IP" '{ split($4, adresse, "/"); if (adresse[1] == ip) print $2 }')
+# Identifiant VRRP unique par groupe : le troisième octet du réseau (58).
+ID_ROUTEUR=$(echo "$MON_IP" | cut -d. -f3)
+LIGNES_PAIRS=$(for pair in $PAIRS; do echo "        $pair"; done)
+
+CONFIG_KEEPALIVED_TEMPORAIRE=$(mktemp)
+trap 'rm -f "$CONFIG_TEMPORAIRE" "$CONFIG_KEEPALIVED_TEMPORAIRE"' EXIT
+
+cat > "$CONFIG_KEEPALIVED_TEMPORAIRE" << CONFIG
+global_defs {
+    router_id $(hostname)
+    enable_script_security
+    script_user root
+}
+
+# Si HAProxy ne tourne plus ici, ce répartiteur abandonne l'adresse virtuelle.
+vrrp_script haproxy_actif {
+    script "/usr/bin/systemctl is-active --quiet haproxy"
+    interval 1
+    fall 2
+    rise 2
+}
+
+vrrp_instance resultats {
+    state ${ETAT}
+    interface ${INTERFACE}
+    virtual_router_id ${ID_ROUTEUR}
+    priority ${PRIORITE}
+    advert_int 1
+    unicast_src_ip ${MON_IP}
+    unicast_peer {
+${LIGNES_PAIRS}
+    }
+    virtual_ipaddress {
+        ${ADRESSE_VIRTUELLE}/24 dev ${INTERFACE}
+    }
+    track_script {
+        haproxy_actif
+    }
+}
+CONFIG
+
+keepalived -t -f "$CONFIG_KEEPALIVED_TEMPORAIRE"
+if cmp -s "$CONFIG_KEEPALIVED_TEMPORAIRE" /etc/keepalived/keepalived.conf; then
+  echo "[lb] keepalived inchangé"
+else
+  install -m 644 "$CONFIG_KEEPALIVED_TEMPORAIRE" /etc/keepalived/keepalived.conf
+  systemctl reload-or-restart keepalived
+  echo "[lb] keepalived mis à jour : $(hostname) en ${ETAT}, priorité ${PRIORITE}"
+fi
+systemctl enable --quiet keepalived
+systemctl is-active --quiet keepalived || systemctl start keepalived
