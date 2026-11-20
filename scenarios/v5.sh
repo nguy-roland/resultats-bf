@@ -17,6 +17,7 @@ else
   NB_APP="inconnu (.vagrant/nb_app absent)"
 fi
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "inconnu")
+EXTENSIONS_ACTIVES=$(cat .vagrant/extensions 2>/dev/null)
 if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
   MODIFS="oui (fichiers suivis modifiés localement)"
 else
@@ -29,6 +30,7 @@ fi
   echo "Commit                    : $COMMIT"
   echo "Modifications locales     : $MODIFS"
   echo "NB_APP                    : $NB_APP"
+echo "Extensions                : ${EXTENSIONS_ACTIVES:-aucune}"
   echo "Version de Vagrant        : $(vagrant --version)"
   echo
   echo "=== Sortie complète de Vagrant ==="
