@@ -82,10 +82,10 @@ La base est PostgreSQL 16 (paquet Ubuntu 24.04), sur deux machines : bdd1 (192.1
 **Durée mesurée.** 26,5 s avec seulement bdd1 et bdd2 allumées ; 34,5 s dans le scénario V4, avec toute la plateforme. Ces durées comprennent trois appels `vagrant ssh` depuis l'hôte, qui coûtent chacun plusieurs secondes sous Windows. La promotion elle-même n'a pas été chronométrée séparément.
 
 **Relancer le script** est sans danger : bdd2 étant déjà principale, il répond qu'il n'y a rien à faire.
+**Faire relire la nouvelle adresse aux serveurs applicatifs.** Dans la version actuelle de `scripts/app.sh`, le fichier `config/primaire` n'est pas encore lu : les serveurs applicatifs continuent de viser bdd1 après la bascule et `/sante` reste en 503 (voir V4). Cette étape sera décrite quand la partie applicative aura été fusionnée.
 
-**Faire relire la nouvelle adresse aux serveurs applicatifs.** [À compléter avec l'ingénieur applicatif : la commande qui fait relire `config/primaire`.]
-
-**Remettre la plateforme dans son état normal.** bdd1 ne redevient pas une réplique toute seule. Il faut supprimer `config/primaire`, puis recréer les deux bases : `vagrant destroy -f bdd1 bdd2`, puis `vagrant up bdd1 bdd2`. Les serveurs applicatifs doivent ensuite pointer de nouveau vers bdd1 [à confirmer avec l'ingénieur applicatif]. Si `vagrant up` échoue avec `VERR_ALREADY_EXISTS`, VirtualBox a laissé un dossier : supprimer `resultats-bf-bdd1` (ou `resultats-bf-bdd2`) dans le dossier `VirtualBox VMs` de l'utilisateur, puis relancer.
+**Remettre la plateforme dans son état normal.
+** bdd1 ne redevient pas une réplique toute seule. Il faut supprimer `config/primaire`, puis recréer les deux bases : `vagrant destroy -f bdd1 bdd2`, puis `vagrant up bdd1 bdd2`. Le retour des serveurs applicatifs vers bdd1 dépendra de la même lecture de `config/primaire` et sera décrit avec la partie applicative.. Si `vagrant up` échoue avec `VERR_ALREADY_EXISTS`, VirtualBox a laissé un dossier : supprimer `resultats-bf-bdd1` (ou `resultats-bf-bdd2`) dans le dossier `VirtualBox VMs` de l'utilisateur, puis relancer.
 ### 4.3 Reconstruction complète
 
 <!-- Responsable : Stéphanie -->
