@@ -123,20 +123,22 @@ kill "$PID_SONDE" 2>/dev/null
 wait "$PID_SONDE" 2>/dev/null
 PID_SONDE=""
 
-# --- 6. Analyse : toutes les sondes entre l'arrêt de bdd1 et le retour du 200 doivent être des 503 non vides ---
+# --- 6. Analyse : dès le début de l'arrêt de bdd1 et jusqu'au retour du 200, /sante répond 200 tant que la base
+#     n'est pas tombée, puis uniquement des 503 non vides (jamais de page blanche ni d'erreur de connexion) ---
 if [ -n "$T200" ]; then FIN_FENETRE="$T200"; else FIN_FENETRE=9999999999999; fi
-ANALYSE=$(awk -v t0="$T0" -v fin="$FIN_FENETRE" '
+ANALYSE=$(awk -v t0="$T_HALT_DEBUT" -v fin="$FIN_FENETRE" '
   $1 >= t0 && $1 < fin {
     n++
-    if ($2 == 503 && $3 > 0) ok++
+    if ($2 == 503 && $3 > 0) { ok++; vu503 = 1 }
+    else if ($2 == 200 && $3 > 0 && !vu503) avant++    # la base n est pas encore tombée : /sante répond encore
     else { mauvais++; clef = $2; if ($3 == 0) clef = clef " (vide)"; d[clef]++ }
   }
   END {
     detail = ""
     for (k in d) detail = detail (detail == "" ? "" : ", ") k " x" d[k]
-    printf "%d %d %d %s", n, ok, mauvais, detail
+    printf "%d %d %d %d %s", n, ok, avant, mauvais, detail
   }' "$JOURNAL_SONDE")
-read -r N_SONDES N_503 N_ANOMALIES DETAIL_ANOMALIES <<< "$ANALYSE"
+read -r N_SONDES N_503 N_200_AVANT N_ANOMALIES DETAIL_ANOMALIES <<< "$ANALYSE"
 
 journal
 journal "--- Chronologie des réponses de /sante (t = 0 : bdd1 arrêtée) ---"
@@ -183,8 +185,9 @@ fi
 
 journal
 journal "--- Résultats ---"
-journal "sondes entre l'arrêt de bdd1 et le retour du 200 : ${N_SONDES:-0}"
-journal "dont 503 avec une réponse non vide            : ${N_503:-0}"
+journal "sondes depuis le début de l'arrêt de bdd1 jusqu'au 200 : ${N_SONDES:-0}"
+journal "dont 200 avant la chute de la base                      : ${N_200_AVANT:-0}"
+journal "dont 503 avec une réponse non vide                      : ${N_503:-0}"
 journal "anomalies (page blanche, erreur de connexion, autre code) : ${N_ANOMALIES:-0} ${DETAIL_ANOMALIES:-}"
 journal "partie 503                                    : $PARTIE_503"
 journal "promotion de bdd2 (bascule.sh)                : $PROMOTION"
