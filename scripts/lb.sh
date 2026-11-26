@@ -67,6 +67,12 @@ backend applications
     default-server inter 1s fall 2 rise 2
 ${SERVEURS_APP}
 
+# Métriques au format Prometheus, lues par la machine obs (E2).
+frontend metriques
+    bind 0.0.0.0:8405
+    http-request use-service prometheus-exporter if { path /metrics }
+    no log
+
 # Page d'état des serveurs, sur le port 8404 de lb1.
 listen statistiques
     bind 0.0.0.0:8404
