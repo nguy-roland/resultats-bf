@@ -21,14 +21,14 @@ FileUtils.mkdir_p(File.dirname(FICHIER_NB_APP))
 File.write(FICHIER_NB_APP, NB_APP.to_s)
 
 
-# EXTENSIONS : liste séparée par des virgules (e1), mémorisée comme NB_APP.
+# EXTENSIONS : liste séparée par des virgules (e1, e2), mémorisée comme NB_APP.
 # Par défaut, toutes les extensions réalisées ; EXTENSIONS= vagrant up démarre le socle seul.
 FICHIER_EXTENSIONS = File.join(RACINE, ".vagrant", "extensions")
 EXTENSIONS = (ENV['EXTENSIONS'] || (File.read(FICHIER_EXTENSIONS) if File.exist?(FICHIER_EXTENSIONS)) || "e1")
   .split(",").map(&:strip).reject(&:empty?)
-EXTENSIONS_INCONNUES = EXTENSIONS - ["e1"]
+EXTENSIONS_INCONNUES = EXTENSIONS - ["e1", "e2"]
 unless EXTENSIONS_INCONNUES.empty?
-  abort "Extension inconnue : #{EXTENSIONS_INCONNUES.join(', ')} (connues : e1)."
+  abort "Extension inconnue : #{EXTENSIONS_INCONNUES.join(', ')} (connues : e1, e2)."
 end
 File.write(FICHIER_EXTENSIONS, EXTENSIONS.join(","))
 
@@ -51,6 +51,12 @@ if EXTENSIONS.include?("e1")
               "vip" => ADRESSE_VIRTUELLE, "priorite" => 100 }
 end
 
+# E2 : machine de supervision (Prometheus et Grafana).
+if EXTENSIONS.include?("e2")
+  NOEUDS << { "nom" => "obs", "ip" => "#{RESEAU}.41", "memoire" => 768, "role" => "obs" }
+end
+
+
 # Les scripts de provisionnement liront ce fichier dans /vagrant/config/noeuds.yml
 FileUtils.mkdir_p(File.join(RACINE, "config"))
 File.write(File.join(RACINE, "config", "noeuds.yml"), NOEUDS.to_yaml)
@@ -62,6 +68,19 @@ unless File.exist?(FICHIER_ENV)
   modele = File.read(File.join(RACINE, ".env.exemple"), encoding: "UTF-8")
   File.write(FICHIER_ENV, modele.gsub("a_remplacer") { SecureRandom.alphanumeric(20) })
   File.chmod(0600, FICHIER_ENV)
+end
+
+# Variables ajoutées au modèle après la création du .env : on les complète.
+LIGNES_MODELE = File.readlines(File.join(RACINE, ".env.exemple"), chomp: true, encoding: "UTF-8")
+  .reject { |ligne| ligne.strip.empty? || ligne.start_with?("#") }
+CLES_PRESENTES = File.readlines(FICHIER_ENV, chomp: true, encoding: "UTF-8").map { |ligne| ligne.split("=", 2).first }
+LIGNES_MANQUANTES = LIGNES_MODELE.reject { |ligne| CLES_PRESENTES.include?(ligne.split("=", 2).first) }
+unless LIGNES_MANQUANTES.empty?
+  contenu_actuel = File.read(FICHIER_ENV, encoding: "UTF-8")
+  File.open(FICHIER_ENV, "a") do |fichier|
+    fichier.puts unless contenu_actuel.end_with?("\n")
+    LIGNES_MANQUANTES.each { |ligne| fichier.puts(ligne.gsub("a_remplacer") { SecureRandom.alphanumeric(20) }) }
+  end
 end
 
 # Variables du .env, transmises plus tard aux scripts de provisionnement.
