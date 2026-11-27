@@ -42,7 +42,23 @@ flowchart LR
 ### 3.2 Application
 
 <!-- Responsable : Issaka -->
-À rédiger.
+**Un service minimal, sans état.** L'application tient en moins de cent lignes de Python (`app/server.py`). C'est une application WSGI écrite avec la bibliothèque standard et `psycopg2`, servie par gunicorn. Nous n'avons pas retenu Flask : la connexion est lente (tout vient de paquets apt, sans pip) et chaque serveur applicatif n'a que 512 Mo. Moins de dépendances, c'est moins à télécharger et moins de mémoire.
+
+Le service ne conserve rien : ni session, ni fichier local, ni compteur. Chaque requête ouvre sa propre connexion à la base, l'utilise et la ferme. C'est ce qui rend l'ajout ou le retrait d'un serveur indolore (exigence R3) : tous les serveurs sont interchangeables, et tout l'état vit dans PostgreSQL. Le prix à payer est une ouverture de connexion par requête. Sous forte charge, un pool de connexions serait plus efficace, mais il introduirait un état dans le processus et compliquerait la reprise après une panne de la base.
+
+| Point d'entrée | Réponse |
+|----------------|---------|
+| `GET /resultat?matricule=…` | 200 avec la ligne du candidat en JSON ; 404 si le matricule n'existe pas ; 400 si le paramètre manque ; 503 si la base est indisponible |
+| `GET /sante` | 200 si une vraie requête (`SELECT 1 FROM resultats LIMIT 1`) aboutit, 503 sinon |
+| `GET /info` | 200 avec le nom d'hôte du serveur, en texte brut |
+
+**Une sonde qui ne ment pas.** `/sante` interroge la vraie table : elle ne renvoie 200 que si la base répond et que la table existe. Une base arrêtée, injoignable ou pas encore initialisée donne 503. C'est cette sonde que HAProxy interroge toutes les secondes ; deux échecs écartent le serveur. Le délai de connexion du service est de 2 secondes et celui de la sonde HAProxy d'une seconde : le répartiteur renonce donc avant le service, ce qui est voulu. Quand la base est arrêtée, tous les serveurs échouent à la sonde et HAProxy répond lui-même 503, ce que demande le scénario V4.
+
+**Des erreurs de base propres.** Le service n'ouvre aucune connexion au démarrage : il démarre donc même si la base est absente, et il réessaie à chaque requête. Nous l'avons vérifié : avec `bdd1` arrêtée, `/sante` renvoie 503 avec `{"erreur": "base indisponible"}` ; une fois `bdd1` relancée, il repasse à 200 sans toucher au serveur applicatif. Un matricule mal formé donne 404, jamais une erreur de base brute. La cause réelle d'un 503 (délai dépassé, authentification refusée, table absente) est écrite dans le journal du service (`journalctl -u resultats-bf`) et jamais dans la réponse envoyée au client.
+
+**Un provisionnement rejouable.** `scripts/app.sh` installe les paquets apt (`python3-psycopg2`, `python3-yaml`, `gunicorn`) seulement s'ils manquent. Il lit l'adresse de `bdd1` et le port dans `config/noeuds.yml`, la même source de vérité que pour le répartiteur : aucune adresse n'est écrite en dur. Les identifiants de la base arrivent par les variables d'environnement du Vagrantfile et sont placés dans `/etc/resultats-bf/app.env`, en droits 600 (exigence R7). Le code est copié dans `/opt/resultats-bf` plutôt que lu dans `/vagrant`, qui peut ne pas être monté quand le service démarre. Le service tourne sous un utilisateur système sans shell, écoute sur `0.0.0.0:8000` et redémarre tout seul s'il s'arrête. Le script ne remplace un fichier et ne redémarre le service que si son contenu a changé : rejouer `vagrant provision app1` deux fois de suite affiche « Service inchangé » (exigence R2).
+
+**Limites observées.** Sur notre poste, où plusieurs machines virtuelles se partagent la mémoire, les réponses de `/sante` ont varié de 0,09 s à 1,45 s sur douze essais, et un travailleur gunicorn a été tué une fois après un dépassement de délai. La mémoire de 512 Mo est juste : nous avons observé l'utilisation du swap. Ces temps sont à garder en tête pour les scénarios V2 et V3, car une réponse de plus d'une seconde peut être comptée comme un échec par la sonde HAProxy.
 
 ### 3.3 Base de données et réplication
 
