@@ -2,7 +2,8 @@
 # Rôle         : serveur applicatif (app1 … appN)
 # Responsable  : ingénieur applicatif
 # Reçoit       : DB_NAME, DB_USER, DB_PASSWORD ; code dans /vagrant/app ;
-#                adresse de bdd1 et port de l'application dans noeuds.yml
+#                adresse de bdd1 et port de l'application dans noeuds.yml ;
+#                après une bascule, adresse de la base principale dans config/primaire
 # Produit      : service systemd sans état, à l'écoute sur 0.0.0.0:<port>,
 #                avec GET /resultat, /sante (200 ou 503) et /info (nom d'hôte) ;
 #                démarre même si la base est absente, et réessaie
@@ -48,6 +49,36 @@ print(bdd["ip"], moi["port"])
 PYTHON
 )"
 read -r DB_HOST APP_PORT <<< "$lecture"
+
+# 2 bis. Après une bascule, bascule.sh écrit l'adresse de bdd2 dans config/primaire.
+# Sans ce fichier, la base est bdd1. Un fichier resté d'une ancienne bascule (plateforme
+# reconstruite) désignerait une réplique : dans ce cas il est ignoré.
+FICHIER_PRIMAIRE=/vagrant/config/primaire
+if [ -s "$FICHIER_PRIMAIRE" ]; then
+  CANDIDATE="$(tr -d '[:space:]' < "$FICHIER_PRIMAIRE")"
+  if ! [[ "$CANDIDATE" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+    echo "[app.sh] ERREUR : config/primaire ne contient pas une adresse IP" >&2
+    exit 1
+  fi
+  statut="$(python3 - "$CANDIDATE" << 'PYTHON'
+import os, sys, psycopg2
+try:
+    connexion = psycopg2.connect(host=sys.argv[1], dbname=os.environ["DB_NAME"], user=os.environ["DB_USER"],
+                                 password=os.environ["DB_PASSWORD"], connect_timeout=3)
+    curseur = connexion.cursor()
+    curseur.execute("SELECT pg_is_in_recovery()")
+    print("replique" if curseur.fetchone()[0] else "principale")
+except Exception:
+    print("inconnu")
+PYTHON
+)"
+  if [ "$statut" = "replique" ]; then
+    log "config/primaire désigne une réplique ($CANDIDATE) : ignoré, la base reste bdd1"
+  else
+    DB_HOST="$CANDIDATE"
+    log "Base principale lue dans config/primaire : $DB_HOST (état : $statut)"
+  fi
+fi
 
 # Copie $1 vers $2 (droits $3) seulement si le contenu diffère, et note le changement.
 deposer() {
