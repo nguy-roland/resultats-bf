@@ -60,7 +60,17 @@ La base est PostgreSQL 16 (paquet Ubuntu 24.04), sur deux machines : bdd1 (192.1
 ### 3.4 Observabilité (E2)
 
 <!-- Responsable : Stéphanie -->
-À rédiger.
+L'extension E2 ajoute une machine `obs` (192.168.58.41) qui supervise la plateforme avec Prometheus, node_exporter et Grafana.
+
+- **node_exporter** est installé sur chaque machine virtuelle et expose son processeur, sa mémoire, son disque et son réseau.
+- **Prometheus** interroge régulièrement chaque machine (modèle « pull »). Il n'y a rien à configurer sur les serveurs observés en dehors de l'agent, et une machine qui s'arrête se voit immédiatement : la collecte échoue et la métrique `up` passe à 0.
+- **Grafana** affiche ces séries dans un tableau de bord.
+
+Le tableau de bord doit montrer deux choses : le débit qui monte pendant une charge (V3), et un serveur applicatif qui disparaît pendant une panne (V2).
+
+[À CONFIRMER après réalisation : l'indicateur de débit retenu (trafic réseau du répartiteur via node_exporter, ou statistiques HAProxy), et l'adresse de la machine `obs`.]
+
+Contrainte : `obs` demande 768 Mo de mémoire. Sur un poste de 8 Go, l'extension n'est allumée que pour la démonstration.
 
 ## 4. Procédures d'exploitation
 
@@ -89,7 +99,18 @@ La base est PostgreSQL 16 (paquet Ubuntu 24.04), sur deux machines : bdd1 (192.1
 ### 4.3 Reconstruction complète
 
 <!-- Responsable : Stéphanie -->
-À rédiger.
+**Prérequis.** VirtualBox 7.1.18 et Vagrant 2.4.9 (mêmes versions pour tout le groupe), et un fichier `.env` créé à partir de `.env.exemple`. Les mots de passe ne sont jamais versionnés (R7).
+
+**Procédure.**
+1. `vagrant destroy -f` détruit toutes les machines.
+2. `vagrant up` recrée et provisionne l'ensemble, sans intervention manuelle.
+3. `curl http://localhost:8080/sante` permet de vérifier la plateforme.
+
+**Mesure.** Le script `scenarios/v5.sh` enchaîne ces commandes, chronomètre l'ensemble et enregistre le résultat brut dans `mesures/v5-DATE.txt`, avec le contexte (commit, NB_APP, extensions actives). Durée mesurée : [À COMPLÉTER avec la mesure finale].
+
+**Points d'attention.**
+- La durée dépend des extensions actives et du poste : elle est notée en tête de chaque mesure.
+- Les scripts doivent garder des fins de ligne LF (voir `.gitattributes`), sinon ils échouent dans les machines virtuelles.
 
 ## 5. Résultats des scénarios
 
@@ -107,17 +128,14 @@ La base est PostgreSQL 16 (paquet Ubuntu 24.04), sur deux machines : bdd1 (192.1
 
 <!-- Responsable : Stéphanie -->
 
-| Commande | Attendu | Obtenu | Verdict |
-|----------|---------|--------|---------|
-|          |         |        |         |
+| `vagrant halt app1` pendant une charge | Service disponible, plus d'erreur au-delà de 5 s | à mesurer | à mesurer |
 
 ### V3 : montée en charge
 
 <!-- Responsable : Stéphanie -->
 
-| Commande | Attendu | Obtenu | Verdict |
-|----------|---------|--------|---------|
-|          |         |        |         |
+| `scenarios/v3.sh` avec NB_APP=2 puis NB_APP=4 | Débit plus élevé avec 4 serveurs (sans forcément doubler : les machines virtuelles partagent un seul processeur) | à mesurer | à mesurer |
+
 
 ### V4 : panne de la base
 
@@ -133,17 +151,13 @@ La base est PostgreSQL 16 (paquet Ubuntu 24.04), sur deux machines : bdd1 (192.1
 
 <!-- Responsable : Stéphanie -->
 
-| Commande | Attendu | Obtenu | Verdict |
-|----------|---------|--------|---------|
-|          |         |        |         |
+| `scenarios/v5.sh` | Plateforme fonctionnelle sans intervention, durée totale mesurée | à mesurer | à mesurer |
 
 ### V6 : panne du répartiteur (E1)
 
 <!-- Responsable : Stéphanie -->
 
-| Commande | Attendu | Obtenu | Verdict |
-|----------|---------|--------|---------|
-|          |         |        |         |
+| `vagrant halt lb1` | Service joignable à la même adresse en moins de 5 s | à mesurer | à mesurer |
 
 ## 6. Limites connues et ce que nous ferions autrement
 
