@@ -12,7 +12,7 @@ NOEUDS=${NOEUDS:-/vagrant/config/noeuds.yml}
 HOSTS=${HOSTS:-/etc/hosts}
 
 # --- 1. Paquets de base : un seul apt-get, et seulement s'il manque quelque chose ---
-PAQUETS="curl ca-certificates iputils-ping"
+PAQUETS="curl ca-certificates iputils-ping prometheus-node-exporter"
 manquants=""
 for p in $PAQUETS; do
   dpkg -s "$p" >/dev/null 2>&1 || manquants="$manquants $p"
