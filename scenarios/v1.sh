@@ -11,6 +11,14 @@ NOMBRE_APPELS=20
 NB_APP=$(cat .vagrant/nb_app 2>/dev/null || echo 2)
 FICHIER_MESURE="mesures/v1-$(date +%F-%H%M%S).txt"
 
+# Attente : tous les serveurs applicatifs doivent être en service avant la mesure (15 s au plus).
+# Un serveur tout juste redémarré n'est remis en service qu'après deux sondes réussies.
+for tentative in $(seq 1 15); do
+  SERVEURS_VUS=$(for appel in $(seq 1 $(( NB_APP * 2 ))); do curl -s -f -m 2 "$ADRESSE/info"; echo; done | grep -v "^$" | sort -u | wc -l)
+  [ "$SERVEURS_VUS" -ge "$NB_APP" ] && break
+  sleep 1
+done
+
 # Un appel en erreur est compté comme ERREUR plutôt que d'être perdu.
 REPARTITION=$(for appel in $(seq 1 "$NOMBRE_APPELS"); do
   curl -s -f -m 2 "$ADRESSE/info" || echo -n "ERREUR"
